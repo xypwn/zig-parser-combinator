@@ -42,16 +42,17 @@ fn ParsersItem(comptime parsers: anytype) type {
     if (parsers.len == 0) {
         @compileError("Parser tuple must contain at least one parser");
     }
-    const ReferenceParser = @TypeOf(parsers[0]);
-    const reference_parser_info = @typeInfo(ParserDereference(parsers[0]));
+    const reference_parser = parsers[0];
+    const ReferenceParser = @TypeOf(reference_parser);
+    const reference_parser_info = @typeInfo(ParserDereference(reference_parser));
     inline for (parsers) |parser| {
         const parser_info = @typeInfo(ParserDereference(parser));
         if (parser_info.Fn.return_type.? !=
             reference_parser_info.Fn.return_type.?)
         {
             @compileError("All parsers must be of the same type, " ++
-                "first deviant: " ++ @typeName(@TypeOf(parser)) ++
-                ", expected: " ++ @typeName(ReferenceParser));
+                "first deviant: " ++ ParserTypeName(parser) ++
+                ", expected: " ++ ParserTypeName(reference_parser));
         }
     }
     return ReferenceParser;
@@ -115,6 +116,12 @@ pub fn ParserDereference(comptime parser: anytype) type {
             @typeName(@TypeOf(parser)));
     }
     return parser_ptr_info.Pointer.child;
+}
+
+pub fn ParserTypeName(comptime parser: anytype) []const u8 {
+    const In = ParserIn(parser);
+    const Out = ParserOut(parser);
+    return "Parser(" ++ @typeName(In) ++ ", " ++ @typeName(Out) ++ ")";
 }
 
 /// On success, adds all sequentially resulting values into a slice.
@@ -290,7 +297,7 @@ pub fn someSlice(comptime parser: anytype) @TypeOf(parser) {
             input: []const ParserIn(parser),
         ) anyerror!ParserResult(parser) {
             if (!comptime meta.trait.isSlice(ParserOut(parser))) {
-                @compileError("someSlice() can only be used on parsers that ouput slices, found: " ++
+                @compileError("someSlice() can only be used on parsers that output slices, found: " ++
                     @typeName(ParsersOut(parser)));
             }
 
