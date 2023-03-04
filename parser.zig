@@ -34,49 +34,7 @@ pub fn Result(comptime In: type, comptime Out: type) type {
 }
 
 /// Returns the type of a single parser given a tuple of many parsers.
-pub fn ParsersItem(comptime parsers: anytype) type {
-    return ParsersItemAny(parsers, false);
-}
-
-/// Returns the `Result` type of a single parser given a tuple of parsers.
-pub fn ParsersResult(comptime parsers: anytype) type {
-    return ParsersResultAny(parsers, false);
-}
-
-/// Returns the `In` type of a single parser given a tuple of parsers.
-fn ParsersIn(comptime parsers: anytype) type {
-    return ParsersInAny(parsers, false);
-}
-
-/// Returns the `Out` type of a single parser given a tuple of parsers.
-fn ParsersOut(comptime parsers: anytype) type {
-    return ParsersOutAny(parsers, false);
-}
-
-/// Like `ParsersItem()`, but allows parsers with `Out` type void to be mixed in.
-pub fn ParsersItemV(comptime parsers: anytype) type {
-    return ParsersItemAny(parsers, true);
-}
-
-/// Like `ParsersResult()`, but allows parsers with `Out` type void to be mixed in.
-pub fn ParsersResultV(comptime parsers: anytype) type {
-    return ParsersResultAny(parsers, true);
-}
-
-/// Like `ParsersIn()`, but allows parsers with `Out` type void to be mixed in.
-fn ParsersInV(comptime parsers: anytype) type {
-    return ParsersInAny(parsers, true);
-}
-
-/// Like `ParsersOut()`, but allows parsers with `Out` type void to be mixed in.
-fn ParsersOutV(comptime parsers: anytype) type {
-    return ParsersOutAny(parsers, true);
-}
-
-/// Returns the type of a single parser given a tuple of many parsers.
-///
-/// If `allow_void_parser` is set to `true`, the parsers are allowed to have a `void` output type.
-fn ParsersItemAny(comptime parsers: anytype, comptime allow_void_parser: bool) type {
+fn ParsersItem(comptime parsers: anytype) type {
     if (!meta.trait.isTuple(@TypeOf(parsers))) {
         @compileError("Parsers must be in a tuple, found: " ++
             @typeName(@TypeOf(parsers)));
@@ -84,22 +42,14 @@ fn ParsersItemAny(comptime parsers: anytype, comptime allow_void_parser: bool) t
     if (parsers.len == 0) {
         @compileError("Parser tuple must contain at least one parser");
     }
-    var ReferenceParser = @TypeOf(parsers[0]);
-    var reference_parser_info = @typeInfo(ParserDereference(parsers[0]));
-    inline for (parsers) |parser| {
-        if (ParserOut(parser) != void) {
-            ReferenceParser = @TypeOf(parser);
-            reference_parser_info = @typeInfo(ParserDereference(parser));
-        }
-    }
+    const ReferenceParser = @TypeOf(parsers[0]);
+    const reference_parser_info = @typeInfo(ParserDereference(parsers[0]));
     inline for (parsers) |parser| {
         const parser_info = @typeInfo(ParserDereference(parser));
         if (parser_info.Fn.return_type.? !=
-            reference_parser_info.Fn.return_type.? and
-            !(allow_void_parser and ParserOut(parser) == void))
+            reference_parser_info.Fn.return_type.?)
         {
             @compileError("All parsers must be of the same type, " ++
-                if (allow_void_parser) "or void, " else "" ++
                 "first deviant: " ++ @typeName(@TypeOf(parser)) ++
                 ", expected: " ++ @typeName(ReferenceParser));
         }
@@ -108,20 +58,20 @@ fn ParsersItemAny(comptime parsers: anytype, comptime allow_void_parser: bool) t
 }
 
 /// Returns the `Result` type of a single parser given a tuple of parsers.
-fn ParsersResultAny(comptime parsers: anytype, comptime allow_void_parser: bool) type {
-    const item_instance: ParsersItemAny(parsers, allow_void_parser) = undefined;
+fn ParsersResult(comptime parsers: anytype) type {
+    const item_instance: ParsersItem(parsers) = undefined;
     return ParserResult(item_instance);
 }
 
 /// Returns the `In` type of a single parser given a tuple of parsers.
-fn ParsersInAny(comptime parsers: anytype, comptime allow_void_parser: bool) type {
-    const item_instance: ParsersItemAny(parsers, allow_void_parser) = undefined;
+fn ParsersIn(comptime parsers: anytype) type {
+    const item_instance: ParsersItem(parsers) = undefined;
     return ParserIn(item_instance);
 }
 
 /// Returns the `Out` type of a single parser given a tuple of parsers.
-fn ParsersOutAny(comptime parsers: anytype, comptime allow_void_parser: bool) type {
-    const item_instance: ParsersItemAny(parsers, allow_void_parser) = undefined;
+fn ParsersOut(comptime parsers: anytype) type {
+    const item_instance: ParsersItem(parsers) = undefined;
     return ParserOut(item_instance);
 }
 
@@ -169,9 +119,9 @@ pub fn ParserDereference(comptime parser: anytype) type {
 
 /// On success, adds all sequentially resulting values into a slice.
 /// Fails if any of the parsers fails.
-pub fn all(comptime parsers: anytype) Parser(ParsersInV(parsers), []const ParsersOutV(parsers)) {
-    const In = ParsersInV(parsers);
-    const Out = ParsersOutV(parsers);
+pub fn all(comptime parsers: anytype) Parser(ParsersIn(parsers), []const ParsersOut(parsers)) {
+    const In = ParsersIn(parsers);
+    const Out = ParsersOut(parsers);
     return struct {
         fn func(
             context: Context,
@@ -186,9 +136,7 @@ pub fn all(comptime parsers: anytype) Parser(ParsersInV(parsers), []const Parser
                 var result = try parser(context, remaining);
                 remaining = result.remaining;
 
-                if (ParserOut(parser) != void) {
-                    try array.append(result.value);
-                }
+                try array.append(result.value);
             }
 
             return .{
@@ -204,9 +152,9 @@ pub fn all(comptime parsers: anytype) Parser(ParsersInV(parsers), []const Parser
 ///
 /// The difference between all() and allSlice() is like the difference between
 /// ArrayList.append() and ArrayList.appendSlice().
-pub fn allSlice(comptime parsers: anytype) ParsersItemV(parsers) {
-    const In = ParsersInV(parsers);
-    const Out = ParsersOutV(parsers);
+pub fn allSlice(comptime parsers: anytype) ParsersItem(parsers) {
+    const In = ParsersIn(parsers);
+    const Out = ParsersOut(parsers);
     return struct {
         fn func(
             context: Context,
@@ -227,9 +175,7 @@ pub fn allSlice(comptime parsers: anytype) ParsersItemV(parsers) {
                 const result = try parser(context, remaining);
                 remaining = result.remaining;
 
-                if (ParserOut(parser) != void) {
-                    try array.appendSlice(result.value);
-                }
+                try array.appendSlice(result.value);
             }
 
             return .{
@@ -402,17 +348,23 @@ pub fn maybe(comptime parser: anytype) @TypeOf(parser) {
     }.func;
 }
 
-/// Discards the parser's result value. Can be used in `all()`, for example.
-pub fn discard(comptime parser: anytype) Parser(ParserIn(parser), void) {
+/// Discards the parser's result value. Only works on parsers that output slices
+/// since an empty return value is required.
+pub fn discard(comptime parser: anytype) @TypeOf(parser) {
     return struct {
         fn func(
             context: Context,
             input: []const ParserIn(parser),
-        ) anyerror!Result(ParserIn(parser), void) {
+        ) anyerror!ParserResult(parser) {
+            if (!comptime meta.trait.isSlice(ParserOut(parser))) {
+                @compileError("discard() can only be used on parsers that output slices, output found: " ++
+                    @typeName(ParsersOut(parser)));
+            }
+
             const result = try parser(context, input);
             return .{
                 .remaining = result.remaining,
-                .value = void{},
+                .value = &[_]@typeInfo(ParserOut(parser)).Pointer.child{},
             };
         }
     }.func;
