@@ -104,7 +104,12 @@ const Token = union(TokenTag) {
 
     const Self = @This();
 
-    pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) @TypeOf(writer).Error!void {
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) @TypeOf(writer).Error!void {
         _ = fmt;
         switch (self) {
             .number => |value| try std.fmt.formatFloatDecimal(value, options, writer),
