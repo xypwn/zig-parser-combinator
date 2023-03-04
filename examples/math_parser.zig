@@ -174,7 +174,7 @@ fn expr() p.Parser(Token, Token) {
             context: p.Context,
             input: []const Token,
         ) anyerror!p.Result(Token, Token) {
-            const result = try p.any(.{
+            const result = try p.which(.{
                 p.all(.{
                     term(),
                     p.any(.{
@@ -188,8 +188,8 @@ fn expr() p.Parser(Token, Token) {
             return .{
                 .remaining = result.remaining,
                 .value = .{
-                    .number = switch (result.value.len) {
-                        3 => if (result.value[1] == .add)
+                    .number = switch (result.index) {
+                        0 => if (result.value[1] == .add)
                             result.value[0].number + result.value[2].number // term + expr
                         else if (result.value[1] == .subtract)
                             result.value[0].number - result.value[2].number // term - expr
@@ -210,7 +210,7 @@ fn term() p.Parser(Token, Token) {
             context: p.Context,
             input: []const Token,
         ) anyerror!p.Result(Token, Token) {
-            const result = try p.any(.{
+            const result = try p.which(.{
                 p.all(.{
                     factor(),
                     p.any(.{
@@ -228,15 +228,15 @@ fn term() p.Parser(Token, Token) {
             return .{
                 .remaining = result.remaining,
                 .value = .{
-                    .number = switch (result.value.len) {
-                        3 => if (result.value[1] == .multiply)
+                    .number = switch (result.index) {
+                        0 => if (result.value[1] == .multiply)
                             result.value[0].number * result.value[2].number // factor * term
                         else if (result.value[1] == .divide)
                             result.value[0].number / result.value[2].number // factor / term
                         else
                             unreachable,
-                        2 => result.value[0].number * result.value[1].number, // factor term (implicit multiplication)
-                        1 => result.value[0].number, // factor
+                        1 => result.value[0].number * result.value[1].number, // factor term (implicit multiplication)
+                        2 => result.value[0].number, // factor
                         else => unreachable,
                     },
                 },
@@ -251,7 +251,7 @@ fn factor() p.Parser(Token, Token) {
             context: p.Context,
             input: []const Token,
         ) anyerror!p.Result(Token, Token) {
-            const result = try p.any(.{
+            const result = try p.which(.{
                 p.all(.{
                     TokenTag.lparen.parser(),
                     expr(),
@@ -266,10 +266,10 @@ fn factor() p.Parser(Token, Token) {
             return .{
                 .remaining = result.remaining,
                 .value = .{
-                    .number = switch (result.value.len) {
-                        3 => result.value[1].number, // (expr)
-                        2 => -result.value[1].number, // -<number>
-                        1 => result.value[0].number, // <number>
+                    .number = switch (result.index) {
+                        0 => result.value[1].number,
+                        1 => -result.value[1].number,
+                        2 => result.value[0].number,
                         else => unreachable,
                     },
                 },

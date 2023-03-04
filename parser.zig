@@ -182,6 +182,7 @@ pub fn allSlice(comptime parsers: anytype) ParsersItem(parsers) {
 }
 
 /// Returns the first successful parsing result on success.
+/// Use `which()` if you need to know which parser succeeded.
 pub fn any(comptime parsers: anytype) ParsersItem(parsers) {
     return struct {
         fn func(
@@ -192,6 +193,48 @@ pub fn any(comptime parsers: anytype) ParsersItem(parsers) {
                 const result = parser(context, input);
                 if (result != ParsingFailed) {
                     return result;
+                }
+            }
+            return ParsingFailed;
+        }
+    }.func;
+}
+
+pub fn Which(comptime parsers: anytype) type {
+    const In = ParsersIn(parsers);
+    return *const fn (context: Context, input: []const In) anyerror!WhichResult(parsers);
+}
+
+pub fn WhichResult(comptime parsers: anytype) type {
+    const In = ParsersIn(parsers);
+    const Out = ParsersOut(parsers);
+    return struct {
+        index: usize,
+        remaining: []const In,
+        value: Out,
+    };
+}
+
+/// On the first successful parse, returns a struct containing the parsed value and the parser's index.
+///
+/// This function isn't actually a parser!
+pub fn which(comptime parsers: anytype) Which(parsers) {
+    return struct {
+        fn func(
+            context: Context,
+            input: []const ParsersIn(parsers),
+        ) anyerror!WhichResult(parsers) {
+            inline for (parsers, 0..) |parser, i| {
+                if (parser(context, input)) |result| {
+                    return .{
+                        .index = i,
+                        .remaining = result.remaining,
+                        .value = result.value,
+                    };
+                } else |err| {
+                    if (err != ParsingFailed) {
+                        return err;
+                    }
                 }
             }
             return ParsingFailed;
