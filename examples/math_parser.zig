@@ -214,6 +214,10 @@ fn term() p.Parser(Token, Token) {
                     }),
                     term(),
                 }),
+                p.all(.{
+                    factor(),
+                    term(),
+                }),
                 p.all(.{factor()}),
             })(context, input);
             return .{
@@ -226,6 +230,7 @@ fn term() p.Parser(Token, Token) {
                             result.value[0].number / result.value[2].number // factor / term
                         else
                             unreachable,
+                        2 => result.value[0].number * result.value[1].number, // factor term (implicit multiplication)
                         1 => result.value[0].number, // factor
                         else => unreachable,
                     },
