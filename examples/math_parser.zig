@@ -267,9 +267,9 @@ fn factor() p.Parser(Token, Token) {
                 .remaining = result.remaining,
                 .value = .{
                     .number = switch (result.index) {
-                        0 => result.value[1].number,
-                        1 => -result.value[1].number,
-                        2 => result.value[0].number,
+                        0 => result.value[1].number, // (expr)
+                        1 => -result.value[1].number, // -<number>
+                        2 => result.value[0].number, // <number>
                         else => unreachable,
                     },
                 },
