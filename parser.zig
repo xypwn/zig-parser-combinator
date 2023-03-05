@@ -428,3 +428,24 @@ pub fn optionalPrefix(
         }
     }.func;
 }
+
+/// Converts the parser's `Out` type using the given conversion function.
+pub fn convert(
+    comptime T: type,
+    comptime parser: anytype,
+    comptime convert_func: *const fn (ParserOut(parser)) anyerror!T,
+) Parser(ParserIn(parser), T) {
+    const In = ParserIn(parser);
+    return struct {
+        fn func(
+            context: Context,
+            input: []const In,
+        ) anyerror!Result(In, T) {
+            const result = try parser(context, input);
+            return .{
+                .remaining = result.remaining,
+                .value = try convert_func(result.value),
+            };
+        }
+    }.func;
+}

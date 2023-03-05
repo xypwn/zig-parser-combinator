@@ -6,64 +6,45 @@ const fmt = std.fmt;
 const p = @import("parser.zig");
 
 pub fn float(comptime T: type) p.Parser(u8, T) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const u8,
-        ) anyerror!p.Result(u8, T) {
-            const result = try p.allSlice(.{
-                p.maybe(p.string("-")),
-                p.any(.{
-                    p.allSlice(.{
-                        p.some(digit()),
-                        p.maybe(p.string(".")),
-                        p.maybe(p.some(digit())),
-                    }),
-                    p.allSlice(.{
-                        p.string("."),
-                        p.some(digit()),
-                    }),
-                }),
-            })(context, input);
-            return .{
-                .remaining = result.remaining,
-                .value = try fmt.parseFloat(T, result.value),
-            };
+    return p.convert(T, p.allSlice(.{
+        p.maybe(p.string("-")),
+        p.any(.{
+            p.allSlice(.{
+                p.some(digit()),
+                p.maybe(p.string(".")),
+                p.maybe(p.some(digit())),
+            }),
+            p.allSlice(.{
+                p.string("."),
+                p.some(digit()),
+            }),
+        }),
+    }), struct {
+        fn func(value: []const u8) anyerror!T {
+            return try fmt.parseFloat(T, value);
         }
-    }.func;
+    }.func);
 }
 
 pub fn int(comptime T: type) p.Parser(u8, T) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const u8,
-        ) anyerror!p.Result(u8, T) {
-            const result = try p.allSlice(.{
-                p.maybe(p.string("-")),
-                p.some(digit()),
-            })(context, input);
-            return .{
-                .remaining = result.remaining,
-                .value = try fmt.parseInt(T, result.value, 10),
-            };
+    return p.convert(T, p.allSlice(.{
+        p.maybe(p.string("-")),
+        p.some(digit()),
+    }), struct {
+        fn func(value: []const u8) anyerror!T {
+            try fmt.parseInt(T, value, 10);
         }
-    }.func;
+    }.func);
 }
 
 pub fn unsigned(comptime T: type) p.Parser(u8, T) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const u8,
-        ) anyerror!p.Result(u8, T) {
-            const result = try p.some(digit())(context, input);
-            return .{
-                .remaining = result.remaining,
-                .value = try fmt.parseUnsigned(T, result.value, 10),
-            };
+    return p.convert(T, p.some(
+        digit(),
+    ), struct {
+        fn func(value: []const u8) anyerror!T {
+            try fmt.parseUnsigned(T, value, 10);
         }
-    }.func;
+    }.func);
 }
 
 pub fn alphanumeric() p.Parser(u8, u8) {

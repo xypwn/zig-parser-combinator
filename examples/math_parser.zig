@@ -147,48 +147,34 @@ const Token = union(TokenTag) {
     }
 
     fn parseNumber() p.Parser(u8, Token) {
-        return struct {
-            fn func(
-                context: p.Context,
-                input: []const u8,
-            ) anyerror!p.Result(u8, Token) {
-                const result = try p.float(f64)(context, input);
-                return .{
-                    .remaining = result.remaining,
-                    .value = .{ .number = result.value },
-                };
+        return p.convert(Token, p.float(f64), struct {
+            fn func(value: f64) anyerror!Token {
+                return .{ .number = value };
             }
-        }.func;
+        }.func);
     }
 
     fn parseSymbol() p.Parser(u8, Token) {
-        return struct {
-            fn func(
-                context: p.Context,
-                input: []const u8,
-            ) anyerror!p.Result(u8, Token) {
-                const result = try p.any(.{
-                    p.char('('),
-                    p.char(')'),
-                    p.char('+'),
-                    p.char('-'),
-                    p.char('*'),
-                    p.char('/'),
-                })(context, input);
-                return .{
-                    .remaining = result.remaining,
-                    .value = switch (result.value) {
-                        '(' => .{ .lparen = void{} },
-                        ')' => .{ .rparen = void{} },
-                        '+' => .{ .add = void{} },
-                        '-' => .{ .subtract = void{} },
-                        '*' => .{ .multiply = void{} },
-                        '/' => .{ .divide = void{} },
-                        else => unreachable,
-                    },
+        return p.convert(Token, p.any(.{
+            p.char('('),
+            p.char(')'),
+            p.char('+'),
+            p.char('-'),
+            p.char('*'),
+            p.char('/'),
+        }), struct {
+            fn func(value: u8) anyerror!Token {
+                return switch (value) {
+                    '(' => .{ .lparen = void{} },
+                    ')' => .{ .rparen = void{} },
+                    '+' => .{ .add = void{} },
+                    '-' => .{ .subtract = void{} },
+                    '*' => .{ .multiply = void{} },
+                    '/' => .{ .divide = void{} },
+                    else => unreachable,
                 };
             }
-        }.func;
+        }.func);
     }
 };
 
@@ -197,72 +183,51 @@ fn operation(
     comptime op: TokenTag,
     comptime rhs_parser: p.Parser(Token, Token),
 ) p.Parser(Token, Token) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const Token,
-        ) anyerror!p.Result(Token, Token) {
-            const result = try p.all(.{
-                lhs_parser,
-                op.parser(),
-                rhs_parser,
-            })(context, input);
-            const lhs = result.value[0].number;
-            const rhs = result.value[2].number;
-            return .{
-                .remaining = result.remaining,
-                .value = .{ .number = switch (result.value[1]) {
-                    .add => lhs + rhs,
-                    .subtract => lhs - rhs,
-                    .multiply => lhs * rhs,
-                    .divide => lhs / rhs,
-                    else => @panic("operation() requires an arithmetic operation"),
-                } },
-            };
+    return p.convert(Token, p.all(.{
+        lhs_parser,
+        op.parser(),
+        rhs_parser,
+    }), struct {
+        fn func(value: []const Token) anyerror!Token {
+            const lhs = value[0].number;
+            const rhs = value[2].number;
+            return .{ .number = switch (value[1]) {
+                .add => lhs + rhs,
+                .subtract => lhs - rhs,
+                .multiply => lhs * rhs,
+                .divide => lhs / rhs,
+                else => @panic("operation() requires an arithmetic operation"),
+            } };
         }
-    }.func;
+    }.func);
 }
 
 fn implicitMultiplication(
     comptime lhs_parser: p.Parser(Token, Token),
     comptime rhs_parser: p.Parser(Token, Token),
 ) p.Parser(Token, Token) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const Token,
-        ) anyerror!p.Result(Token, Token) {
-            const result = try p.all(.{
-                lhs_parser,
-                rhs_parser,
-            })(context, input);
-            const lhs = result.value[0].number;
-            const rhs = result.value[1].number;
-            return .{
-                .remaining = result.remaining,
-                .value = .{ .number = lhs * rhs },
-            };
+    return p.convert(Token, p.all(.{
+        lhs_parser,
+        rhs_parser,
+    }), struct {
+        fn func(value: []const Token) anyerror!Token {
+            const lhs = value[0].number;
+            const rhs = value[1].number;
+            return .{ .number = lhs * rhs };
         }
-    }.func;
+    }.func);
 }
 
 fn wrappedInParens(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token, Token) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const Token,
-        ) anyerror!p.Result(Token, Token) {
-            const result = try p.all(.{
-                TokenTag.lparen.parser(),
-                inner_parser,
-                TokenTag.rparen.parser(),
-            })(context, input);
-            return .{
-                .remaining = result.remaining,
-                .value = .{ .number = result.value[1].number },
-            };
+    return p.convert(Token, p.all(.{
+        TokenTag.lparen.parser(),
+        inner_parser,
+        TokenTag.rparen.parser(),
+    }), struct {
+        fn func(value: []const Token) anyerror!Token {
+            return .{ .number = value[1].number };
         }
-    }.func;
+    }.func);
 }
 
 fn number() p.Parser(Token, Token) {
