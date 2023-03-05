@@ -447,23 +447,21 @@ pub fn maybe(comptime parser: anytype) @TypeOf(parser) {
     }.func;
 }
 
-/// Discards the parser's result value. Only works on parsers that output slices
-/// since an empty return value is required.
-pub fn discard(comptime parser: anytype) @TypeOf(parser) {
+/// Discards the parser's result value by emitting an empty slice.
+/// The slice type has to be specified via `OutItem`.
+pub fn discard(
+    comptime OutItem: type,
+    comptime parser: anytype,
+) Parser(ParserIn(parser), []const OutItem) {
     return struct {
         fn func(
             context: *Context,
             input: []const ParserIn(parser),
-        ) anyerror!ParserResult(parser) {
-            if (!comptime meta.trait.isSlice(ParserOut(parser))) {
-                @compileError("discard() can only be used on parsers that output slices, output found: " ++
-                    @typeName(ParsersOut(parser)));
-            }
-
+        ) anyerror!Result(ParserIn(parser), []const OutItem) {
             const result = try parser(context, input);
             return .{
                 .remaining = result.remaining,
-                .value = &[_]@typeInfo(ParserOut(parser)).Pointer.child{},
+                .value = &[_]OutItem{},
             };
         }
     }.func;

@@ -5,9 +5,9 @@ const fmt = std.fmt;
 
 const p = @import("parser.zig");
 
-pub fn float(comptime T: type) p.Parser(u8, T) {
+pub fn float(comptime T: type, comptime can_be_negative: bool) p.Parser(u8, T) {
     return p.convert(T, p.allSlice(.{
-        p.maybe(p.string("-")),
+        p.maybe(p.string(if (can_be_negative) "-" else "")),
         p.any(.{
             p.allSlice(.{
                 p.some(digit()),

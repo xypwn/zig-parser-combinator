@@ -29,35 +29,9 @@ pub fn main() !void {
 }
 
 pub fn processUserInput(user_input: []const u8, context: *p.Context) !void {
-    //const parser = p.any(.{ Token.parseNumber, Token.parseSymbol });
-    //const parser = p.allSlice(.{p.some(p.char('a'))});
-    //const parser = p.some(p.char('a'));
-    //const parser = p.someSlice(p.string("a"));
-    //const parser = p.any(.{p.char('a')});
-    //const parser = p.unsigned();
-    const tokenizer = p.some(p.any(.{
-        Token.parseSymbol(),
-        Token.parseNumber(),
-    }));
-    var tokens: []const Token = undefined;
-    if (tokenizer(context, user_input)) |result| {
-        std.debug.print("Tokens: {any}\n", .{result.value});
-        if (result.remaining.len > 0) {
-            std.debug.print("Remaining characters: {s}\n", .{result.remaining});
-        }
-        tokens = result.value;
-    } else |err| {
-        if (err == p.ParsingFailed) {
-            std.debug.print("Tokenization failed\n", .{});
-            return;
-        } else {
-            return err;
-        }
-    }
-
     const parser = expr();
-    if (parser(context, tokens)) |result| {
-        std.debug.print("Result: {}\n", .{result.value});
+    if (parser(context, user_input)) |result| {
+        std.debug.print("Result: {d}\n", .{result.value});
         if (result.remaining.len > 0) {
             std.debug.print("Remaining tokens: {any}\n", .{result.remaining});
         }
@@ -71,183 +45,104 @@ pub fn processUserInput(user_input: []const u8, context: *p.Context) !void {
     }
 }
 
-fn expr() p.Parser(Token, Token) {
+fn expr() p.Parser(u8, f64) {
     return p.any(.{
-        operation(term(), .add, p.wrap(expr, .{})), // term + expr
-        operation(term(), .subtract, p.wrap(expr, .{})), // term - expr
+        operation(term(), '+', p.wrap(expr, .{})), // term + expr
+        operation(term(), '-', p.wrap(expr, .{})), // term - expr
         prefixed(term()), // +/- number
         term(), // term
     });
 }
 
-fn term() p.Parser(Token, Token) {
+fn term() p.Parser(u8, f64) {
     return p.any(.{
-        operation(factor(), .multiply, p.wrap(term, .{})), // factor * term
-        operation(factor(), .divide, p.wrap(term, .{})), // factor / term
+        operation(factor(), '*', p.wrap(term, .{})), // factor * term
+        operation(factor(), '/', p.wrap(term, .{})), // factor / term
         implicitMultiplication(factor(), p.wrap(term, .{})), // factor term
         factor(), // factor
     });
 }
 
-fn factor() p.Parser(Token, Token) {
+fn factor() p.Parser(u8, f64) {
     return p.any(.{
         wrappedInParens(p.wrap(expr, .{})), // (expr)
-        number(), // number
+        p.float(f64, false), // number
     });
 }
 
-const TokenTag = enum {
-    number,
-    lparen,
-    rparen,
-    add,
-    subtract,
-    multiply,
-    divide,
-
-    const Self = @This();
-
-    fn parser(comptime self: Self) p.Parser(Token, Token) {
-        return p.match(Token, struct {
-            fn func(t: Token) bool {
-                return t == self;
-            }
-        }.func);
-    }
-};
-const Token = union(TokenTag) {
-    number: f64,
-    lparen: void,
-    rparen: void,
-    add: void,
-    subtract: void,
-    multiply: void,
-    divide: void,
-
-    const Self = @This();
-
-    pub fn format(
-        self: Self,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) @TypeOf(writer).Error!void {
-        _ = fmt;
-        switch (self) {
-            .number => |value| try std.fmt.formatFloatDecimal(value, options, writer),
-            .lparen => _ = try writer.write("("),
-            .rparen => _ = try writer.write(")"),
-            .add => _ = try writer.write("+"),
-            .subtract => _ = try writer.write("-"),
-            .multiply => _ = try writer.write("*"),
-            .divide => _ = try writer.write("/"),
-        }
-    }
-
-    fn parseNumber() p.Parser(u8, Token) {
-        return p.convert(Token, p.float(f64), struct {
-            fn func(value: f64) anyerror!Token {
-                return .{ .number = value };
-            }
-        }.func);
-    }
-
-    fn parseSymbol() p.Parser(u8, Token) {
-        return p.convert(Token, p.any(.{
-            p.char('('),
-            p.char(')'),
-            p.char('+'),
-            p.char('-'),
-            p.char('*'),
-            p.char('/'),
-        }), struct {
-            fn func(value: u8) anyerror!Token {
-                return switch (value) {
-                    '(' => .{ .lparen = void{} },
-                    ')' => .{ .rparen = void{} },
-                    '+' => .{ .add = void{} },
-                    '-' => .{ .subtract = void{} },
-                    '*' => .{ .multiply = void{} },
-                    '/' => .{ .divide = void{} },
-                    else => unreachable,
-                };
-            }
-        }.func);
-    }
-};
-
 fn operation(
-    comptime lhs_parser: p.Parser(Token, Token),
-    comptime op: TokenTag,
-    comptime rhs_parser: p.Parser(Token, Token),
-) p.Parser(Token, Token) {
-    return p.convert(Token, p.all(.{
-        lhs_parser,
-        op.parser(),
-        rhs_parser,
+    comptime lhs_parser: p.Parser(u8, f64),
+    comptime op: u8,
+    comptime rhs_parser: p.Parser(u8, f64),
+) p.Parser(u8, f64) {
+    return p.convert(f64, p.allSlice(.{
+        p.all(.{lhs_parser}),
+        p.discard(f64, p.char(op)),
+        p.all(.{rhs_parser}),
     }), struct {
-        fn func(value: []const Token) anyerror!Token {
-            const lhs = value[0].number;
-            const rhs = value[2].number;
-            return .{ .number = switch (value[1]) {
-                .add => lhs + rhs,
-                .subtract => lhs - rhs,
-                .multiply => lhs * rhs,
-                .divide => lhs / rhs,
+        fn func(value: []const f64) anyerror!f64 {
+            const lhs = value[0];
+            const rhs = value[1];
+            return switch (op) {
+                '+' => lhs + rhs,
+                '-' => lhs - rhs,
+                '*' => lhs * rhs,
+                '/' => lhs / rhs,
                 else => @panic("operation() requires an arithmetic operation"),
-            } };
+            };
         }
     }.func);
 }
 
 fn implicitMultiplication(
-    comptime lhs_parser: p.Parser(Token, Token),
-    comptime rhs_parser: p.Parser(Token, Token),
-) p.Parser(Token, Token) {
-    return p.convert(Token, p.all(.{
+    comptime lhs_parser: p.Parser(u8, f64),
+    comptime rhs_parser: p.Parser(u8, f64),
+) p.Parser(u8, f64) {
+    return p.convert(f64, p.all(.{
         lhs_parser,
         rhs_parser,
     }), struct {
-        fn func(value: []const Token) anyerror!Token {
-            const lhs = value[0].number;
-            const rhs = value[1].number;
-            return .{ .number = lhs * rhs };
+        fn func(value: []const f64) anyerror!f64 {
+            const lhs = value[0];
+            const rhs = value[1];
+            return lhs * rhs;
         }
     }.func);
 }
 
-fn wrappedInParens(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token, Token) {
-    return p.convert(Token, p.all(.{
-        TokenTag.lparen.parser(),
-        inner_parser,
-        TokenTag.rparen.parser(),
+fn wrappedInParens(
+    comptime inner_parser: p.Parser(u8, f64),
+) p.Parser(u8, f64) {
+    return p.convert(f64, p.allSlice(.{
+        p.discard(f64, p.char('(')),
+        p.all(.{inner_parser}),
+        p.discard(f64, p.char(')')),
     }), struct {
-        fn func(value: []const Token) anyerror!Token {
-            return .{ .number = value[1].number };
+        fn func(value: []const f64) anyerror!f64 {
+            return value[0];
         }
     }.func);
 }
 
-fn number() p.Parser(Token, Token) {
-    return TokenTag.number.parser();
-}
-
-fn prefixed(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token, Token) {
-    return p.convert(Token, p.any(.{
-        p.all(.{
-            TokenTag.add.parser(),
-            inner_parser,
-        }),
-        p.all(.{
-            TokenTag.subtract.parser(),
-            inner_parser,
-        }),
-    }), struct {
-        fn func(value: []const Token) anyerror!Token {
-            return .{ .number = if (value[0] == .subtract)
-                -value[1].number
-            else
-                value[1].number };
-        }
-    }.func);
+fn prefixed(comptime inner_parser: p.Parser(u8, f64)) p.Parser(u8, f64) {
+    return p.any(
+        .{
+            p.convert(f64, p.allSlice(.{
+                p.discard(f64, p.char('+')),
+                p.all(.{inner_parser}),
+            }), struct {
+                fn func(value: []const f64) anyerror!f64 {
+                    return value[0];
+                }
+            }.func),
+            p.convert(f64, p.allSlice(.{
+                p.discard(f64, p.char('-')),
+                p.all(.{inner_parser}),
+            }), struct {
+                fn func(value: []const f64) anyerror!f64 {
+                    return -value[0];
+                }
+            }.func),
+        },
+    );
 }
