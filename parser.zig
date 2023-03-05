@@ -126,6 +126,53 @@ pub fn ParserTypeName(comptime parser: anytype) []const u8 {
     return "Parser(" ++ @typeName(In) ++ ", " ++ @typeName(Out) ++ ")";
 }
 
+/// Converts the parser's `Out` type using the given conversion function.
+pub fn convert(
+    comptime T: type,
+    comptime parser: anytype,
+    comptime convert_func: *const fn (ParserOut(parser)) anyerror!T,
+) Parser(ParserIn(parser), T) {
+    const In = ParserIn(parser);
+    return struct {
+        fn func(
+            context: Context,
+            input: []const In,
+        ) anyerror!Result(In, T) {
+            const result = try parser(context, input);
+            return .{
+                .remaining = result.remaining,
+                .value = try convert_func(result.value),
+            };
+        }
+    }.func;
+}
+
+fn ParserGeneratorReturnType(comptime function: anytype) type {
+    const FunctionType = @TypeOf(function);
+    const function_info = @typeInfo(FunctionType);
+    if (function_info != .Fn) {
+        @compileError("Parser generator must be a function, found: " ++
+            @typeName(FunctionType));
+    }
+    return function_info.Fn.return_type.?;
+}
+
+/// Wraps the given parser generator in a function call, allowing for recursion.
+pub fn wrap(
+    comptime parser_generator: anytype,
+    comptime args: anytype,
+) ParserGeneratorReturnType(parser_generator) {
+    const ParserType = ParserGeneratorReturnType(parser_generator);
+    const parser_instance: ParserType = undefined;
+    const In = ParserIn(parser_instance);
+    const Out = ParserOut(parser_instance);
+    return struct {
+        fn func(context: Context, input: []const In) anyerror!Result(In, Out) {
+            return @call(.always_inline, parser_generator, args)(context, input);
+        }
+    }.func;
+}
+
 /// On success, adds all sequentially resulting values into a slice.
 /// Fails if any of the parsers fails.
 pub fn all(comptime parsers: anytype) Parser(ParsersIn(parsers), []const ParsersOut(parsers)) {
@@ -366,53 +413,6 @@ pub fn discard(comptime parser: anytype) @TypeOf(parser) {
             return .{
                 .remaining = result.remaining,
                 .value = &[_]@typeInfo(ParserOut(parser)).Pointer.child{},
-            };
-        }
-    }.func;
-}
-
-fn ParserGeneratorReturnType(comptime function: anytype) type {
-    const FunctionType = @TypeOf(function);
-    const function_info = @typeInfo(FunctionType);
-    if (function_info != .Fn) {
-        @compileError("Parser generator must be a function, found: " ++
-            @typeName(FunctionType));
-    }
-    return function_info.Fn.return_type.?;
-}
-
-/// Wraps the given parser generator in a function call, allowing for recursion.
-pub fn wrap(
-    comptime parser_generator: anytype,
-    comptime args: anytype,
-) ParserGeneratorReturnType(parser_generator) {
-    const ParserType = ParserGeneratorReturnType(parser_generator);
-    const parser_instance: ParserType = undefined;
-    const In = ParserIn(parser_instance);
-    const Out = ParserOut(parser_instance);
-    return struct {
-        fn func(context: Context, input: []const In) anyerror!Result(In, Out) {
-            return @call(.always_inline, parser_generator, args)(context, input);
-        }
-    }.func;
-}
-
-/// Converts the parser's `Out` type using the given conversion function.
-pub fn convert(
-    comptime T: type,
-    comptime parser: anytype,
-    comptime convert_func: *const fn (ParserOut(parser)) anyerror!T,
-) Parser(ParserIn(parser), T) {
-    const In = ParserIn(parser);
-    return struct {
-        fn func(
-            context: Context,
-            input: []const In,
-        ) anyerror!Result(In, T) {
-            const result = try parser(context, input);
-            return .{
-                .remaining = result.remaining,
-                .value = try convert_func(result.value),
             };
         }
     }.func;
