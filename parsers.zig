@@ -52,7 +52,7 @@ pub fn alphanumeric() p.Parser(u8, u8) {
 }
 
 pub fn alphabetic() p.Parser(u8, u8) {
-    return match(u8, struct {
+    return p.match(u8, struct {
         fn func(c: u8) bool {
             return ascii.isAlphabetic(c);
         }
@@ -60,7 +60,7 @@ pub fn alphabetic() p.Parser(u8, u8) {
 }
 
 pub fn digit() p.Parser(u8, u8) {
-    return match(u8, struct {
+    return p.match(u8, struct {
         fn func(c: u8) bool {
             return ascii.isDigit(c);
         }
@@ -68,47 +68,17 @@ pub fn digit() p.Parser(u8, u8) {
 }
 
 pub fn char(comptime character: u8) p.Parser(u8, u8) {
-    return match(u8, struct {
+    return p.match(u8, struct {
         fn func(c: u8) bool {
             return c == character;
         }
     }.func);
 }
 
-pub fn match(comptime T: type, comptime match_func: *const fn (T) bool) p.Parser(T, T) {
-    return struct {
-        fn func(
-            _: *p.Context,
-            input: []const T,
-        ) anyerror!p.Result(T, T) {
-            if (input.len >= 1 and match_func(input[0])) {
-                return .{
-                    .remaining = input[1..],
-                    .value = input[0],
-                };
-            }
-
-            return p.ParsingFailed;
-        }
-    }.func;
-}
-
 pub fn string(comptime str: []const u8) p.Parser(u8, []const u8) {
-    return struct {
-        fn func(
-            _: *p.Context,
-            input: []const u8,
-        ) anyerror!p.Result(u8, []const u8) {
-            if (input.len >= str.len and
-                mem.eql(u8, input[0..str.len], str))
-            {
-                return .{
-                    .remaining = input[str.len..],
-                    .value = str,
-                };
-            }
-
-            return p.ParsingFailed;
+    return p.matchN(u8, str.len, struct {
+        fn func(value: []const u8) bool {
+            return mem.eql(u8, value, str);
         }
-    }.func;
+    }.func);
 }

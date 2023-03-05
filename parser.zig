@@ -141,6 +141,48 @@ pub fn ParserTypeName(comptime parser: anytype) []const u8 {
     return "Parser(" ++ @typeName(In) ++ ", " ++ @typeName(Out) ++ ")";
 }
 
+/// Matches a single value
+pub fn match(comptime T: type, comptime match_func: *const fn (T) bool) Parser(T, T) {
+    return struct {
+        fn func(
+            _: *Context,
+            input: []const T,
+        ) anyerror!Result(T, T) {
+            if (input.len >= 1 and match_func(input[0])) {
+                return .{
+                    .remaining = input[1..],
+                    .value = input[0],
+                };
+            }
+
+            return ParsingFailed;
+        }
+    }.func;
+}
+
+/// Matches exactly n subsequent values
+pub fn matchN(
+    comptime T: type,
+    comptime n: comptime_int,
+    comptime match_func: *const fn ([]const T) bool,
+) Parser(T, []const T) {
+    return struct {
+        fn func(
+            _: *Context,
+            input: []const T,
+        ) anyerror!Result(T, []const T) {
+            if (input.len >= n and match_func(input[0..n])) {
+                return .{
+                    .remaining = input[n..],
+                    .value = input[0..n],
+                };
+            }
+
+            return ParsingFailed;
+        }
+    }.func;
+}
+
 /// Converts the parser's `Out` type using the given conversion function.
 pub fn convert(
     comptime T: type,
