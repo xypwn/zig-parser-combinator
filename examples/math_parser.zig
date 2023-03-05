@@ -33,7 +33,7 @@ pub fn processUserInput(user_input: []const u8, context: *p.Context) !void {
     if (parser(context, user_input)) |result| {
         std.debug.print("Result: {d}\n", .{result.value});
         if (result.remaining.len > 0) {
-            std.debug.print("Remaining tokens: {any}\n", .{result.remaining});
+            std.debug.print("Unparsed symbols: {s}\n", .{result.remaining});
         }
     } else |err| {
         if (err == p.ParsingFailed) {
