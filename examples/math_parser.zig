@@ -74,6 +74,31 @@ pub fn processUserInput(user_input: []const u8, context: p.Context) !void {
     }
 }
 
+fn expr() p.Parser(Token, Token) {
+    return p.any(.{
+        operation(term(), .add, p.wrap(expr, .{})), // term + expr
+        operation(term(), .subtract, p.wrap(expr, .{})), // term - expr
+        p.wrap(term, .{}), // term
+    });
+}
+
+fn term() p.Parser(Token, Token) {
+    return p.any(.{
+        operation(factor(), .multiply, p.wrap(term, .{})), // factor * term
+        operation(factor(), .divide, p.wrap(term, .{})), // factor / term
+        implicitMultiplication(factor(), p.wrap(term, .{})), // factor term
+        factor(), // factor
+    });
+}
+
+fn factor() p.Parser(Token, Token) {
+    return p.any(.{
+        wrappedInParens(p.wrap(expr, .{})), // (expr)
+        negativeNumber(), // -<number>
+        positiveNumber(), // <number>
+    });
+}
+
 const TokenTag = enum {
     number,
     lparen,
@@ -168,111 +193,96 @@ const Token = union(TokenTag) {
     }
 };
 
-fn expr() p.Parser(Token, Token) {
+fn operation(
+    comptime lhs_parser: p.Parser(Token, Token),
+    comptime op: TokenTag,
+    comptime rhs_parser: p.Parser(Token, Token),
+) p.Parser(Token, Token) {
     return struct {
         fn func(
             context: p.Context,
             input: []const Token,
         ) anyerror!p.Result(Token, Token) {
-            const result = try p.which(.{
-                p.all(.{
-                    term(),
-                    p.any(.{
-                        TokenTag.add.parser(),
-                        TokenTag.subtract.parser(),
-                    }),
-                    expr(),
-                }),
-                p.all(.{term()}),
+            const result = try p.all(.{
+                lhs_parser,
+                op.parser(),
+                rhs_parser,
             })(context, input);
+            const lhs = result.value[0].number;
+            const rhs = result.value[2].number;
             return .{
                 .remaining = result.remaining,
-                .value = .{
-                    .number = switch (result.index) {
-                        0 => if (result.value[1] == .add)
-                            result.value[0].number + result.value[2].number // term + expr
-                        else if (result.value[1] == .subtract)
-                            result.value[0].number - result.value[2].number // term - expr
-                        else
-                            unreachable,
-                        1 => result.value[0].number, // term
-                        else => unreachable,
-                    },
-                },
+                .value = .{ .number = switch (result.value[1]) {
+                    .add => lhs + rhs,
+                    .subtract => lhs - rhs,
+                    .multiply => lhs * rhs,
+                    .divide => lhs / rhs,
+                    else => @panic("operation() requires an arithmetic operation"),
+                } },
             };
         }
     }.func;
 }
 
-fn term() p.Parser(Token, Token) {
+fn implicitMultiplication(
+    comptime lhs_parser: p.Parser(Token, Token),
+    comptime rhs_parser: p.Parser(Token, Token),
+) p.Parser(Token, Token) {
     return struct {
         fn func(
             context: p.Context,
             input: []const Token,
         ) anyerror!p.Result(Token, Token) {
-            const result = try p.which(.{
-                p.all(.{
-                    factor(),
-                    p.any(.{
-                        TokenTag.multiply.parser(),
-                        TokenTag.divide.parser(),
-                    }),
-                    term(),
-                }),
-                p.all(.{
-                    factor(),
-                    term(),
-                }),
-                p.all(.{factor()}),
+            const result = try p.all(.{
+                lhs_parser,
+                rhs_parser,
             })(context, input);
+            const lhs = result.value[0].number;
+            const rhs = result.value[1].number;
             return .{
                 .remaining = result.remaining,
-                .value = .{
-                    .number = switch (result.index) {
-                        0 => if (result.value[1] == .multiply)
-                            result.value[0].number * result.value[2].number // factor * term
-                        else if (result.value[1] == .divide)
-                            result.value[0].number / result.value[2].number // factor / term
-                        else
-                            unreachable,
-                        1 => result.value[0].number * result.value[1].number, // factor term (implicit multiplication)
-                        2 => result.value[0].number, // factor
-                        else => unreachable,
-                    },
-                },
+                .value = .{ .number = lhs * rhs },
             };
         }
     }.func;
 }
 
-fn factor() p.Parser(Token, Token) {
+fn wrappedInParens(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token, Token) {
     return struct {
         fn func(
             context: p.Context,
             input: []const Token,
         ) anyerror!p.Result(Token, Token) {
-            const result = try p.which(.{
-                p.all(.{
-                    TokenTag.lparen.parser(),
-                    expr(),
-                    TokenTag.rparen.parser(),
-                }),
-                p.all(.{
-                    TokenTag.subtract.parser(),
-                    TokenTag.number.parser(),
-                }),
-                p.all(.{TokenTag.number.parser()}),
+            const result = try p.all(.{
+                TokenTag.lparen.parser(),
+                inner_parser,
+                TokenTag.rparen.parser(),
             })(context, input);
             return .{
                 .remaining = result.remaining,
-                .value = .{
-                    .number = switch (result.index) {
-                        0 => result.value[1].number, // (expr)
-                        1 => -result.value[1].number, // -<number>
-                        2 => result.value[0].number, // <number>
-                        else => unreachable,
-                    },
-                },
+                .value = .{ .number = result.value[1].number },
+            };
+        }
+    }.func;
+}
+
+fn positiveNumber() p.Parser(Token, Token) {
+    return TokenTag.number.parser();
+}
+
+fn negativeNumber() p.Parser(Token, Token) {
+    return struct {
+        fn func(
+            context: p.Context,
+            input: []const Token,
+        ) anyerror!p.Result(Token, Token) {
+            const result = try p.all(.{
+                TokenTag.subtract.parser(),
+                TokenTag.number.parser(),
+            })(context, input);
+            return .{
+                .remaining = result.remaining,
+                .value = result.value[1],
             };
         }
     }.func;

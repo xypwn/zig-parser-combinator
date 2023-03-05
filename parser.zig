@@ -376,3 +376,29 @@ pub fn discard(comptime parser: anytype) @TypeOf(parser) {
         }
     }.func;
 }
+
+fn ParserGeneratorReturnType(comptime function: anytype) type {
+    const FunctionType = @TypeOf(function);
+    const function_info = @typeInfo(FunctionType);
+    if (function_info != .Fn) {
+        @compileError("Parser generator must be a function, found: " ++
+            @typeName(FunctionType));
+    }
+    return function_info.Fn.return_type.?;
+}
+
+/// Wraps the given parser generator in a function call, allowing for recursion.
+pub fn wrap(
+    comptime parser_generator: anytype,
+    comptime args: anytype,
+) ParserGeneratorReturnType(parser_generator) {
+    const ParserType = ParserGeneratorReturnType(parser_generator);
+    const parser_instance: ParserType = undefined;
+    const In = ParserIn(parser_instance);
+    const Out = ParserOut(parser_instance);
+    return struct {
+        fn func(context: Context, input: []const In) anyerror!Result(In, Out) {
+            return @call(.always_inline, parser_generator, args)(context, input);
+        }
+    }.func;
+}
