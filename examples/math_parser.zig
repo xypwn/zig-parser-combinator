@@ -94,8 +94,7 @@ fn term() p.Parser(Token, Token) {
 fn factor() p.Parser(Token, Token) {
     return p.any(.{
         wrappedInParens(p.wrap(expr, .{})), // (expr)
-        negativeNumber(), // -<number>
-        positiveNumber(), // <number>
+        number(), // number
     });
 }
 
@@ -266,24 +265,6 @@ fn wrappedInParens(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token
     }.func;
 }
 
-fn positiveNumber() p.Parser(Token, Token) {
-    return TokenTag.number.parser();
-}
-
-fn negativeNumber() p.Parser(Token, Token) {
-    return struct {
-        fn func(
-            context: p.Context,
-            input: []const Token,
-        ) anyerror!p.Result(Token, Token) {
-            const result = try p.all(.{
-                TokenTag.subtract.parser(),
-                TokenTag.number.parser(),
-            })(context, input);
-            return .{
-                .remaining = result.remaining,
-                .value = result.value[1],
-            };
-        }
-    }.func;
+fn number() p.Parser(Token, Token) {
+    return p.optionalPrefix(TokenTag.subtract.parser(), TokenTag.number.parser());
 }

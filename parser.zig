@@ -402,3 +402,29 @@ pub fn wrap(
         }
     }.func;
 }
+
+/// Discards a prefix that may or may not exist. Returns the result of `body_parser`
+///
+/// For slices, use `p.allSlice(.{p.maybe(prefix_parser), body_parser})`.
+pub fn optionalPrefix(
+    comptime prefix_parser: anytype,
+    comptime body_parser: anytype,
+) @TypeOf(body_parser) {
+    const In = ParserIn(body_parser);
+    const Out = ParserOut(body_parser);
+    if (In != ParserIn(prefix_parser)) {
+        @compileError("optionalPrefix(): Prefix and body parser must have the same input type" ++
+            ", found prefix parser type: " ++ ParserTypeName(prefix_parser));
+    }
+    return struct {
+        fn func(context: Context, input: []const In) anyerror!Result(In, Out) {
+            _ = prefix_parser(context, input) catch |err|
+                if (err != ParsingFailed)
+            {
+                return err;
+            };
+
+            return body_parser(context, input);
+        }
+    }.func;
+}
