@@ -39,8 +39,8 @@ pub fn processUserInput(user_input: []const u8, context: p.Context) !void {
     //const parser = p.any(.{p.char('a')});
     //const parser = p.unsigned();
     const tokenizer = p.some(p.any(.{
-        Token.parseNumber(),
         Token.parseSymbol(),
+        Token.parseNumber(),
     }));
     var tokens: []const Token = undefined;
     if (tokenizer(context, user_input)) |result| {
@@ -78,7 +78,8 @@ fn expr() p.Parser(Token, Token) {
     return p.any(.{
         operation(term(), .add, p.wrap(expr, .{})), // term + expr
         operation(term(), .subtract, p.wrap(expr, .{})), // term - expr
-        p.wrap(term, .{}), // term
+        prefixed(term()), // +/- number
+        term(), // term
     });
 }
 
@@ -231,5 +232,25 @@ fn wrappedInParens(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token
 }
 
 fn number() p.Parser(Token, Token) {
-    return p.optionalPrefix(TokenTag.subtract.parser(), TokenTag.number.parser());
+    return TokenTag.number.parser();
+}
+
+fn prefixed(comptime inner_parser: p.Parser(Token, Token)) p.Parser(Token, Token) {
+    return p.convert(Token, p.any(.{
+        p.all(.{
+            TokenTag.add.parser(),
+            inner_parser,
+        }),
+        p.all(.{
+            TokenTag.subtract.parser(),
+            inner_parser,
+        }),
+    }), struct {
+        fn func(value: []const Token) anyerror!Token {
+            return .{ .number = if (value[0] == .subtract)
+                -value[1].number
+            else
+                value[1].number };
+        }
+    }.func);
 }
