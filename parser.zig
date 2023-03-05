@@ -1,13 +1,28 @@
 const std = @import("std");
 const mem = std.mem;
 const meta = std.meta;
+const heap = std.heap;
 const testing = std.testing;
 
 const p = @import("parsers.zig");
 pub usingnamespace @import("parsers.zig");
 
 pub const Context = struct {
-    allocator: mem.Allocator,
+    arena: heap.ArenaAllocator,
+
+    pub fn init(context_allocator: mem.Allocator) Context {
+        return .{
+            .arena = heap.ArenaAllocator.init(context_allocator),
+        };
+    }
+
+    pub fn deinit(self: Context) void {
+        self.arena.deinit();
+    }
+
+    pub fn allocator(self: *Context) mem.Allocator {
+        return self.arena.allocator();
+    }
 };
 
 pub const ParsingFailed = error.ParsingFailed;
@@ -24,7 +39,7 @@ pub const ParsingFailed = error.ParsingFailed;
 /// and another slice of `In` containing the remaining input.
 pub fn Parser(comptime In: type, comptime Out: type) type {
     // We're using a `*const fn` here because when we use an `fn`, the compiler segfaults.
-    return *const fn (Context, []const In) anyerror!Result(In, Out);
+    return *const fn (*Context, []const In) anyerror!Result(In, Out);
 }
 
 /// A parser returns a result and a slice containing the unread tokens.
@@ -135,7 +150,7 @@ pub fn convert(
     const In = ParserIn(parser);
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const In,
         ) anyerror!Result(In, T) {
             const result = try parser(context, input);
@@ -167,7 +182,7 @@ pub fn wrap(
     const In = ParserIn(parser_instance);
     const Out = ParserOut(parser_instance);
     return struct {
-        fn func(context: Context, input: []const In) anyerror!Result(In, Out) {
+        fn func(context: *Context, input: []const In) anyerror!Result(In, Out) {
             return @call(.always_inline, parser_generator, args)(context, input);
         }
     }.func;
@@ -180,10 +195,10 @@ pub fn all(comptime parsers: anytype) Parser(ParsersIn(parsers), []const Parsers
     const Out = ParsersOut(parsers);
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const In,
         ) anyerror!Result(In, []const Out) {
-            var array = std.ArrayList(Out).init(context.allocator);
+            var array = std.ArrayList(Out).init(context.allocator());
             errdefer array.deinit();
 
             var remaining: []const In = input;
@@ -214,7 +229,7 @@ pub fn allSlice(comptime parsers: anytype) ParsersItem(parsers) {
     const Out = ParsersOut(parsers);
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const In,
         ) anyerror!Result(In, Out) {
             if (!comptime meta.trait.isSlice(Out)) {
@@ -223,7 +238,7 @@ pub fn allSlice(comptime parsers: anytype) ParsersItem(parsers) {
             }
 
             var array = std.ArrayList(@typeInfo(Out).Pointer.child)
-                .init(context.allocator);
+                .init(context.allocator());
             errdefer array.deinit();
 
             var remaining: []const In = input;
@@ -248,7 +263,7 @@ pub fn allSlice(comptime parsers: anytype) ParsersItem(parsers) {
 pub fn any(comptime parsers: anytype) ParsersItem(parsers) {
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const ParsersIn(parsers),
         ) anyerror!ParsersResult(parsers) {
             inline for (parsers) |parser| {
@@ -266,10 +281,10 @@ pub fn any(comptime parsers: anytype) ParsersItem(parsers) {
 pub fn some(comptime parser: anytype) Parser(ParserIn(parser), []const ParserOut(parser)) {
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const ParserIn(parser),
         ) anyerror!Result(ParserIn(parser), []const ParserOut(parser)) {
-            var array = std.ArrayList(ParserOut(parser)).init(context.allocator);
+            var array = std.ArrayList(ParserOut(parser)).init(context.allocator());
             errdefer array.deinit();
 
             var remaining: []const ParserIn(parser) = input;
@@ -299,17 +314,14 @@ pub fn some(comptime parser: anytype) Parser(ParserIn(parser), []const ParserOut
 }
 
 test "some()" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const context: Context = .{
-        .allocator = arena.allocator(),
-    };
+    var context = Context.init(testing.allocator);
+    defer context.deinit();
     const parser = some(all(.{
         p.char('a'),
         p.char('b'),
     }));
     {
-        const result = try parser(context, "ababac");
+        const result = try parser(&context, "ababac");
         try testing.expectEqualDeep(result.value, &[_][]const u8{ "ab", "ab" });
         try testing.expectEqualDeep(result.remaining, "ac");
     }
@@ -319,7 +331,7 @@ test "some()" {
 pub fn someSlice(comptime parser: anytype) @TypeOf(parser) {
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const ParserIn(parser),
         ) anyerror!ParserResult(parser) {
             if (!comptime meta.trait.isSlice(ParserOut(parser))) {
@@ -328,7 +340,7 @@ pub fn someSlice(comptime parser: anytype) @TypeOf(parser) {
             }
 
             var array = std.ArrayList(@typeInfo(ParserOut(parser)).Pointer.child)
-                .init(context.allocator);
+                .init(context.allocator());
             errdefer array.deinit();
 
             var remaining: []const ParserIn(parser) = input;
@@ -358,14 +370,11 @@ pub fn someSlice(comptime parser: anytype) @TypeOf(parser) {
 }
 
 test "someSlice()" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const context: Context = .{
-        .allocator = arena.allocator(),
-    };
+    var context = Context.init(testing.allocator);
+    defer context.deinit();
     const parser = someSlice(p.string("ab"));
     {
-        const result = try parser(context, "ababc");
+        const result = try parser(&context, "ababc");
         try testing.expectEqualStrings(result.value, "abab");
         try testing.expectEqualStrings(result.remaining, "c");
     }
@@ -376,7 +385,7 @@ test "someSlice()" {
 pub fn maybe(comptime parser: anytype) @TypeOf(parser) {
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const ParserIn(parser),
         ) anyerror!ParserResult(parser) {
             if (!comptime meta.trait.isSlice(ParserOut(parser))) {
@@ -401,7 +410,7 @@ pub fn maybe(comptime parser: anytype) @TypeOf(parser) {
 pub fn discard(comptime parser: anytype) @TypeOf(parser) {
     return struct {
         fn func(
-            context: Context,
+            context: *Context,
             input: []const ParserIn(parser),
         ) anyerror!ParserResult(parser) {
             if (!comptime meta.trait.isSlice(ParserOut(parser))) {

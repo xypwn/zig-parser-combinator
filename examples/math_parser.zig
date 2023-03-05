@@ -7,11 +7,8 @@ pub fn main() !void {
     defer if (gpa.deinit()) {
         std.debug.print("Leaks detected!\n", .{});
     };
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena.deinit();
-    const context: p.Context = .{
-        .allocator = arena.allocator(),
-    };
+    var context = p.Context.init(gpa.allocator());
+    defer context.deinit();
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
@@ -26,12 +23,12 @@ pub fn main() !void {
             if (std.mem.eql(u8, user_input, "exit")) {
                 break;
             }
-            try processUserInput(user_input, context);
+            try processUserInput(user_input, &context);
         }
     }
 }
 
-pub fn processUserInput(user_input: []const u8, context: p.Context) !void {
+pub fn processUserInput(user_input: []const u8, context: *p.Context) !void {
     //const parser = p.any(.{ Token.parseNumber, Token.parseSymbol });
     //const parser = p.allSlice(.{p.some(p.char('a'))});
     //const parser = p.some(p.char('a'));

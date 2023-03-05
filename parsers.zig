@@ -78,7 +78,7 @@ pub fn char(comptime character: u8) p.Parser(u8, u8) {
 pub fn match(comptime T: type, comptime match_func: *const fn (T) bool) p.Parser(T, T) {
     return struct {
         fn func(
-            _: p.Context,
+            _: *p.Context,
             input: []const T,
         ) anyerror!p.Result(T, T) {
             if (input.len >= 1 and match_func(input[0])) {
@@ -96,7 +96,7 @@ pub fn match(comptime T: type, comptime match_func: *const fn (T) bool) p.Parser
 pub fn string(comptime str: []const u8) p.Parser(u8, []const u8) {
     return struct {
         fn func(
-            _: p.Context,
+            _: *p.Context,
             input: []const u8,
         ) anyerror!p.Result(u8, []const u8) {
             if (input.len >= str.len and
