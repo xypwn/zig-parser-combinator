@@ -1,7 +1,9 @@
 const std = @import("std");
 const mem = std.mem;
 const meta = std.meta;
+const testing = std.testing;
 
+const p = @import("parsers.zig");
 pub usingnamespace @import("parsers.zig");
 
 pub const Context = struct {
@@ -146,9 +148,10 @@ pub fn all(comptime parsers: anytype) Parser(ParsersIn(parsers), []const Parsers
                 try array.append(result.value);
             }
 
+            const slice = try array.toOwnedSlice();
             return .{
                 .remaining = remaining,
-                .value = try array.toOwnedSlice(),
+                .value = slice,
             };
         }
     }.func;
@@ -185,9 +188,10 @@ pub fn allSlice(comptime parsers: anytype) ParsersItem(parsers) {
                 try array.appendSlice(result.value);
             }
 
+            var slice = try array.toOwnedSlice();
             return .{
                 .remaining = remaining,
-                .value = try array.toOwnedSlice(),
+                .value = slice,
             };
         }
     }.func;
@@ -238,12 +242,30 @@ pub fn some(comptime parser: anytype) Parser(ParserIn(parser), []const ParserOut
                 return ParsingFailed;
             }
 
+            var slice = try array.toOwnedSlice();
             return .{
                 .remaining = remaining,
-                .value = try array.toOwnedSlice(),
+                .value = slice,
             };
         }
     }.func;
+}
+
+test "some()" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const context: Context = .{
+        .allocator = arena.allocator(),
+    };
+    const parser = some(all(.{
+        p.char('a'),
+        p.char('b'),
+    }));
+    {
+        const result = try parser(context, "ababac");
+        try testing.expectEqualDeep(result.value, &[_][]const u8{ "ab", "ab" });
+        try testing.expectEqualDeep(result.remaining, "ac");
+    }
 }
 
 /// Creates a slice using the resulting slices of the given parser at least once.
@@ -279,12 +301,27 @@ pub fn someSlice(comptime parser: anytype) @TypeOf(parser) {
                 return ParsingFailed;
             }
 
+            const slice = try array.toOwnedSlice();
             return .{
                 .remaining = remaining,
-                .value = try array.toOwnedSlice(),
+                .value = slice,
             };
         }
     }.func;
+}
+
+test "someSlice()" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const context: Context = .{
+        .allocator = arena.allocator(),
+    };
+    const parser = someSlice(p.string("ab"));
+    {
+        const result = try parser(context, "ababc");
+        try testing.expectEqualStrings(result.value, "abab");
+        try testing.expectEqualStrings(result.remaining, "c");
+    }
 }
 
 /// Succeeds, even if the parse fails. Only works on parsers that output slices
