@@ -6,20 +6,23 @@ const fmt = std.fmt;
 const p = @import("parser.zig");
 
 pub fn float(comptime T: type, comptime can_be_negative: bool) p.Parser(u8, T) {
-    return p.convert(T, p.allSlice(.{
-        p.maybe(p.string(if (can_be_negative) "-" else "")),
-        p.any(.{
-            p.allSlice(.{
-                p.some(digit()),
-                p.maybe(p.string(".")),
-                p.maybe(p.some(digit())),
+    return p.convert(T, p.allSlice(if (can_be_negative)
+        .{p.maybe(p.string("-"))}
+    else
+        .{} ++
+            .{
+            p.any(.{
+                p.allSlice(.{
+                    p.some(digit()),
+                    p.maybe(p.string(".")),
+                    p.maybe(p.some(digit())),
+                }),
+                p.allSlice(.{
+                    p.string("."),
+                    p.some(digit()),
+                }),
             }),
-            p.allSlice(.{
-                p.string("."),
-                p.some(digit()),
-            }),
-        }),
-    }), struct {
+        }), struct {
         fn func(value: []const u8) anyerror!T {
             return try fmt.parseFloat(T, value);
         }
